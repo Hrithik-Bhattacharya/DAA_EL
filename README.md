@@ -1,88 +1,51 @@
-# DAA_EL
-Warehouse Storage Optimisation
-# Blinkit Dark-Store Optimization Engine (B-DOE)
+# Quick-Commerce Dark Store Operations Simulator
 
-A hybrid algorithmic framework designed for ultra-low latency warehouse slotting and routing in Quick-Commerce "Dark Stores." This project models a Blinkit-style micro-fulfillment center (3,000–5,000 sq. ft.) where the entire picking phase must execute within **60–90 seconds**.
+A highly realistic, agent-based software model simulating the operations of a Quick-Commerce Dark Store (e.g., Blinkit, Zepto, Instamart). This academic project focuses on operations research, demonstrating advanced algorithms for warehouse storage optimization, order picking, and dynamic demand forecasting.
 
-By combining a **Real-Time Greedy Slotting Engine** with a **Bitmask Dynamic Programming (DP) Router**, this system bridges the gap between rapid demand volatility and mathematically optimal picker routing.
+## 🚀 Features
 
----
+### 1. Operations Research Algorithms
+- **Exact Bitmask DP TSP Routing**: Computes the mathematically optimal routing path for pickers fulfilling customer orders (for orders ≤ 12 items).
+- **Nearest Neighbor Fallback**: An efficient heuristic for massive B2B-style bulk orders.
+- **Greedy Slotting Optimization**: Continuously analyzes SKU demand velocity to physically relocate high-demand items closer to the packing station.
+- **ABC Classification**: Automatically groups inventory into Class A (high demand), B (medium demand), and C (low demand).
+- **Exponential Smoothing Forecasts**: Predicts future SKU demand based on temporal history and Time-of-Day shifting.
 
-## 🚀 The Challenge: Quick-Commerce Bottlenecks
+### 2. Realistic Warehouse Environment
+- **Massive Multi-location Catalog**: Over 50+ unique groceries and household items. High-velocity items occupy multiple physical shelf locations dynamically.
+- **Multi-Agent Picker Fleet**: Simulates 8 concurrent human pickers dynamically accepting orders and pathfinding across the aisles without collision deadlocks.
+- **Live Event Loop**: Capable of generating hundreds of random customer orders and routing them continuously in a high-density environment.
 
-Traditional fulfillment centers optimize for **Space Utilization**. Blinkit dark stores must optimize exclusively for **Picking Velocity**.
+### 3. Advanced Pygame Visualization
+- **Interactive Operations Dashboard**: Custom widescreen UI featuring live queue tracking, picker utilization metrics, and warehouse density statistics.
+- **Custom Cart Builder**: Click on items in the live product catalog to build custom user orders and inject them directly into the pathfinding queue.
+- **Visual Analytics**: Real-time traffic heatmaps, picker routing comet-trails, and interactive mouse-hover product tooltips.
+- **Re-slotting Animations**: When the layout is optimized, relocated items physically flash on the screen accompanied by an ROI notification banner.
 
-When a 10-minute delivery order comes in, picking multi-item orders efficiently is heavily bottlenecked by two factors:
+## ⚙️ Architecture
 
-1. **Dynamic Demand Shifts:** High-velocity items change rapidly throughout the day (e.g., milk/bread at 8 AM vs. snacks/soda at 11 PM).
-2. **The Myopic Picker Problem:** Standard "nearest-neighbor" heuristic picking paths often trap pickers in dead-ends, inflating travel times.
+The project adheres to a clean, highly modular architecture to support future algorithmic expansions:
 
----
+- `project/algorithms/`: Routing, Slotting, Pathfinding, and Forecasting logic.
+- `project/simulation/`: The live event loop entities (Pickers, Orders, Heatmaps, Congestion tracking).
+- `project/warehouse/`: The physical bounds, layout generation, and core Inventory Catalog definitions.
+- `project/visualization/`: Pygame rendering engine, UI state tracking, and color palettes.
+- `project/experiments/`: Headless scripts for executing scalability tests and mathematical strategy comparisons.
 
-## 🛠️ Architecture: The Hybrid Algorithmic Framework
+## 🖥️ Usage
 
-This engine decouples layout organization from routing execution using a two-tier architectural model:
-
+### Run the Live Interactive UI (Pygame)
+```bash
+python run.py
 ```
-                  [ Real-Time Blinkit Order Stream ]
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ Tier 1: Greedy Slotting Engine (Runs hourly/upon inventory influx)│
-│ ──> Dynamically re-allocates "Trending SKUs" to the Golden Zone │
-└──────────────────────────────────────────────────────────────────┘
-                                  │
-                       Updates Warehouse Grid
-                                  │
-                                  ▼
-┌──────────────────────────────────────────────────────────────────┐
-│ Tier 2: Bitmask DP Route Optimizer (Runs instantly per order)    │
-│ ──> Computes the exact, absolute shortest path for multi-items   │
-└──────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-                    [ Optimal 90s Picker Route ]
+- Press **`[SPACE]`** to generate random orders instantly.
+- Press **`[D]`** to toggle automated Presentation Demo mode.
+- Press **`[T]`** to cycle the Time of Day (Morning/Afternoon/Evening) and shift demand priorities.
+- Press **`[O]`** to force a physical warehouse Re-slotting optimization.
+- Press **`[H]`** to toggle the traffic heatmap overlay.
 
+### Run Strategy Benchmarks (Headless)
+Execute 1,000 algorithmic order simulations to empirically prove the distance savings of Greedy vs Random placement:
+```bash
+python run.py --experiment
 ```
-
-### 1. Tier 1: Demand-Aware Greedy Slotting
-
-A real-time sorting heuristic that tracks SKU velocity scores ($V_i$) dynamically calculated over rolling windows.
-
-* **Logic:** $V_i = \frac{\text{Order Frequency}_i}{\text{Distance from Packing Station}}$
-* **Execution:** As item velocities spike, the algorithm executes local swaps to pull items into the "Golden Zone" (bins nearest to the packer), requiring minimal computational overhead ($O(N \log N)$).
-
-### 2. Tier 2: Bitmask DP Multi-Pick Router
-
-Once a multi-item basket is generated, standard greedy heuristics fail to find the global shortest path. Because a dark store order typically contains fewer than 15 items, we bypass the "Curse of Dimensionality" and solve the Traveling Salesperson Problem (TSP) exactly using **Dynamic Programming with Bitmasking**.
-
-* **State Representation:** $dp[\text{mask}][i]$ represents the shortest path visiting the subset of items defined by the bitmask `mask`, ending at item `i`.
-* **Complexity:** $O(2^n \cdot n^2)$ where $n$ is the number of unique item locations in the order. For $n \le 15$, this executes in milliseconds—well within the 90-second operational window.
-
----
----
-
-## 📊 Core Performance Metrics
-
-To validate the architecture, the project tracks the following key performance indicators (KPIs) against a baseline "Static-Slotting + Nearest-Neighbor" warehouse:
-
-* **Picking Path Reduction (%)**: Total meters traveled per picker shift.
-* **Order Fulfilment Latency**: Time elapsed from order arrival to path computation.
-* **Congestion Multiplier**: Heatmaps identifying aisle blockages when multiple pickers target highly correlated zones.
-
----
-
-## 🏃‍♂️ Getting Started
-
-### Prerequisites
-
-* Python 3.10+
-* NumPy
-* Matplotlib / Pygame (for visual simulation updates)
-
----
-
-## 📚 Literature Gaps Filled by This Project
-
-1. **Dynamic Context Drift:** Most logistics literature assumes static slotting layouts changed quarterly. This project tackles hourly demand fluctuations characteristic of modern quick-commerce.
-2. **Exact Small-Scale Optimization:** While DP is generally dismissed in massive Amazon-sized fulfillment hubs due to scale, this project highlights its extreme efficacy when intentionally applied to the small-bounds framework of micro-fulfillment center order limits.
