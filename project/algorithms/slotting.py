@@ -24,7 +24,7 @@ class SlottingEngine:
         forecast_demand = forecaster.forecasts.get(sku.sku_id, sku.velocity)
         return W_DEMAND * forecast_demand + W_ABC * abc_pri + W_DISTANCE * 1.0
 
-    def optimize_slotting(self, inventory: InventoryManager, layout: WarehouseLayout, strategy: str = "Greedy", forecaster: DemandForecaster = None) -> dict[str, Any]:
+    def optimize_slotting(self, inventory: InventoryManager, layout: WarehouseLayout, strategy: str = "Greedy", forecaster: DemandForecaster = None, force: bool = False) -> dict[str, Any]:
         """
         Assigns SKUs to shelves based on the selected strategy.
         Supports: Random, ABC, Greedy, ForecastDriven.
@@ -35,7 +35,7 @@ class SlottingEngine:
         
         if not skus or not shelves:
             return {"strategy": strategy, "items_moved": 0, "net_benefit": 0.0}
-
+ 
         packing = layout.packing_station
         
         # 1. Sort shelves by ascending BFS distance from packing station
@@ -49,7 +49,7 @@ class SlottingEngine:
                 shelf_distances.append((shelf, float('inf')))
                 
         shelves_sorted = sorted(shelf_distances, key=lambda x: x[1])
-
+ 
         # 2. Rank SKUs based on strategy
         if strategy == "Random":
             skus_sorted = list(skus)
@@ -89,13 +89,13 @@ class SlottingEngine:
                 if old_shelf != new_shelf:
                     items_moved += 1
                     move_cost += (LABOR_COST_PER_MOVE + MOVEMENT_COST_PER_UNIT + DISRUPTION_COST_PER_MOVE)
-
+ 
         # 4. Evaluate Benefit
         distance_savings = total_old_dist - total_new_dist
         net_benefit = distance_savings - move_cost
         
         moved_skus = []
-        if net_benefit > 0 or items_moved == len(skus):
+        if net_benefit > 0 or items_moved == len(skus) or force:
             for sku_id, new_shelf in new_mapping.items():
                 if old_mapping[sku_id] != new_shelf:
                     moved_skus.append(sku_id)

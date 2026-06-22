@@ -15,18 +15,21 @@ CONTROL_PANEL_WIDTH = 280
 SCREEN_WIDTH = (GRID_COLS * TILE_SIZE) + (PADDING * 2) + CONTROL_PANEL_WIDTH
 SCREEN_HEIGHT = (GRID_ROWS * TILE_SIZE) + (PADDING * 2) + 80  # Extra footer room
 
-# Colors (RGB Palette)
-COLOR_BACKGROUND = (240, 244, 248)
-COLOR_AISLE = (255, 255, 255)
-COLOR_WALL = (197, 208, 222)
-COLOR_PACKING = (39, 174, 96)       # Green
-COLOR_ITEM_NORMAL = (41, 128, 185)   # Blue
-COLOR_ITEM_HOT = (192, 57, 43)       # Red
-COLOR_PICKER = (142, 68, 173)       # Purple
-COLOR_PATH = (243, 156, 18)         # Yellow Orange
-COLOR_TEXT = (44, 62, 80)
-COLOR_PANEL_BG = (220, 228, 235)
-COLOR_SLIDER_TRACK = (180, 190, 200)
+# Colors (RGB Palette - Redesigned light theme with terracotta accent)
+COLOR_BACKGROUND = (244, 246, 248)    # Light background
+COLOR_AISLE = (255, 255, 255)         # Walkable aisles
+COLOR_WALL = (241, 242, 244)          # Storage racks
+COLOR_WALL_BORDER = (226, 228, 232)   # Rack border
+COLOR_GRID_LINE = (234, 234, 236)     # Grid line
+COLOR_PACKING = (39, 174, 96)         # Green
+COLOR_ITEM_NORMAL = (246, 220, 210)   # Pale pink-peach
+COLOR_ITEM_HOT = (222, 92, 60)         # Terracotta orange
+COLOR_PICKER = (155, 89, 182)         # Purple picker bot
+COLOR_PATH = (222, 92, 60)            # Terracotta paths / items in order
+COLOR_TEXT = (26, 29, 32)             # Slate/Charcoal text
+COLOR_PANEL_BG = (255, 255, 255)      # Pure white panels
+COLOR_SLIDER_TRACK = (226, 228, 232)  # Light track
+COLOR_SLIDER_FILL = (222, 92, 60)     # Terracotta slider handle
 
 # Layout Setup: 0 = Aisle, 1 = Shelf/Rack, 2 = Packing Station
 WAREHOUSE_MAP = np.zeros((GRID_ROWS, GRID_COLS), dtype=int)
@@ -77,7 +80,7 @@ class Slider:
         # Draw track
         pygame.draw.rect(surface, COLOR_SLIDER_TRACK, self.rect, border_radius=4)
         # Draw handle thumb knob
-        pygame.draw.circle(surface, COLOR_PICKER, (self.handle_x, self.rect.y + 5), self.handle_radius)
+        pygame.draw.circle(surface, COLOR_SLIDER_FILL, (self.handle_x, self.rect.y + 5), self.handle_radius)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -267,17 +270,18 @@ while running:
             rect = pygame.Rect(c * TILE_SIZE + PADDING, r * TILE_SIZE + PADDING, TILE_SIZE, TILE_SIZE)
             if WAREHOUSE_MAP[r, c] == 1:
                 pygame.draw.rect(screen, COLOR_WALL, rect)
-                pygame.draw.rect(screen, (160, 175, 195), rect, 1)
+                pygame.draw.rect(screen, COLOR_WALL_BORDER, rect, 1)
             elif WAREHOUSE_MAP[r, c] == 2:
                 pygame.draw.rect(screen, COLOR_PACKING, rect)
             else:
                 pygame.draw.rect(screen, COLOR_AISLE, rect)
-                pygame.draw.rect(screen, (225, 230, 238), rect, 1)
+                pygame.draw.rect(screen, COLOR_GRID_LINE, rect, 1)
 
     # 2. Draw Assigned SKU Elements
     for sku, (r, c) in sku_to_coords.items():
         rect = pygame.Rect(c * TILE_SIZE + PADDING + 4, r * TILE_SIZE + PADDING + 4, TILE_SIZE - 8, TILE_SIZE - 8)
-        color = COLOR_ITEM_HOT if sku_velocities[sku] > 40 else COLOR_ITEM_NORMAL
+        is_hot = sku_velocities[sku] > 40
+        color = COLOR_ITEM_HOT if is_hot else COLOR_ITEM_NORMAL
         
         if sku in current_order:
             pygame.draw.rect(screen, COLOR_PATH, rect)
@@ -285,7 +289,9 @@ while running:
         else:
             pygame.draw.rect(screen, color, rect)
             
-        v_txt = font.render(str(sku_velocities[sku]), True, (255, 255, 255))
+        # Draw high-contrast text based on class intensity
+        txt_color = (255, 255, 255) if is_hot or sku in current_order else COLOR_TEXT
+        v_txt = font.render(str(sku_velocities[sku]), True, txt_color)
         screen.blit(v_txt, (rect.x + 3, rect.y + 4))
 
     # 3. Draw Path Route Matrix Trace Overlay
@@ -299,7 +305,7 @@ while running:
     # 5. Draw Persistence Right Edge Sidebar Control Panel
     panel_rect = pygame.Rect(panel_x_start, 0, CONTROL_PANEL_WIDTH, SCREEN_HEIGHT)
     pygame.draw.rect(screen, COLOR_PANEL_BG, panel_rect)
-    pygame.draw.line(screen, (170, 185, 200), (panel_x_start, 0), (panel_x_start, SCREEN_HEIGHT), 2)
+    pygame.draw.line(screen, COLOR_SLIDER_TRACK, (panel_x_start, 0), (panel_x_start, SCREEN_HEIGHT), 2)
     
     # Draw out slider controls panels elements list loop
     for s in sliders:

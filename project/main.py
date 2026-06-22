@@ -5,6 +5,7 @@ import sys
 import random
 import argparse
 import pygame
+import pygame.gfxdraw
 import time
 from project.warehouse.layout import WarehouseLayout
 from project.warehouse.inventory import InventoryManager
@@ -18,7 +19,7 @@ from project.simulation.heatmap import HeatmapManager
 from project.simulation.orders import OrderManager, Order
 from project.algorithms.assignment import assign_nearest_available_picker
 from project.visualization.renderer import Renderer
-from project.visualization.colors import PICKER_COLORS
+from project.visualization.colors import PICKER_COLORS, TEXT_PRIMARY, SLIDER_TRACK, SLIDER_FILL
 from project.visualization.ui_state import UIState
 from project.config import FPS, PICKER_BASE_SPEED
 
@@ -46,10 +47,19 @@ class Slider:
         self.update_handle_pos()
 
     def draw(self, surface, font_obj):
-        lbl = font_obj.render(f"{self.label}: {int(self.val) if self.val == int(self.val) else round(self.val,1)}", True, (200,200,200))
+        lbl = font_obj.render(f"{self.label}: {int(self.val) if self.val == int(self.val) else round(self.val,1)}", True, TEXT_PRIMARY)
         surface.blit(lbl, (self.rect.x, self.rect.y - 18))
-        pygame.draw.rect(surface, (180,190,200), self.rect, border_radius=4)
-        pygame.draw.circle(surface, (142,68,173), (self.handle_x, self.rect.y + 5), self.handle_radius)
+        # Draw thin background track
+        track_rect = pygame.Rect(self.rect.x, self.rect.y + 3, self.rect.width, 4)
+        pygame.draw.rect(surface, SLIDER_TRACK, track_rect, border_radius=2)
+        # Draw filled track (left of handle)
+        filled_width = self.handle_x - self.rect.x
+        if filled_width > 0:
+            filled_rect = pygame.Rect(self.rect.x, self.rect.y + 3, filled_width, 4)
+            pygame.draw.rect(surface, SLIDER_FILL, filled_rect, border_radius=2)
+        # Draw handle
+        pygame.gfxdraw.aacircle(surface, self.handle_x, self.rect.y + 5, self.handle_radius, SLIDER_FILL)
+        pygame.gfxdraw.filled_circle(surface, self.handle_x, self.rect.y + 5, self.handle_radius, SLIDER_FILL)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -66,7 +76,7 @@ class Slider:
             return True
         return False
 
-def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order_shelves: list[tuple[int, int]]) -> tuple[list[tuple[int, int]], bool, float]:
+def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order_shelves: list[tuple[int, int]]) -> tuple[list[tuple[int, int]], bool, float, int]:
     targets = [packing_station]
     for shelf in order_shelves:
         aisle = layout.get_adjacent_aisle(shelf)
@@ -77,6 +87,7 @@ def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order
     route_indices, total_dist, is_dp = plan_route(dist_matrix)
     
     full_path_cells = []
+    picking_path_len = 0
     for i in range(len(route_indices) - 1):
         start_idx = route_indices[i]
         end_idx = route_indices[i+1]
@@ -88,7 +99,10 @@ def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order
         else:
             full_path_cells.extend(path_segment)
             
-    return full_path_cells, is_dp, total_dist
+        if i < len(route_indices) - 2:
+            picking_path_len = len(full_path_cells)
+            
+    return full_path_cells, is_dp, total_dist, picking_path_len
 
 def run_ui():
     layout = WarehouseLayout()
@@ -103,13 +117,15 @@ def run_ui():
     clock = pygame.time.Clock()
 
     # --- Manual-mode sliders (position/layout updated each frame) ---
-    slider_width = max(140, int(renderer.sidebar_width - 40))
-    sx = max(20, renderer.screen.get_width() - renderer.sidebar_width + 20)
-    sy = renderer.padding + 50
-    slider_order_size = Slider(sx, sy, slider_width, 2, 11, 4, "Basket Order Size (SKUs)")
-    slider_speed = Slider(sx, sy + 60, slider_width, 0.5, 4.0, 1.0, "Picker Speed Factor")
-    slider_surge_freq = Slider(sx, sy + 120, slider_width, 5, 60, 20, "Demand Surge Timer (s)")
-    slider_hot_intensity = Slider(sx, sy + 180, slider_width, 1, 40, 8, "Surge Intensity")
+    grid_pixel_width = layout.cols * renderer.tile_size
+    right_x = renderer.grid_offset_x + grid_pixel_width + renderer.padding
+    slider_width = int(renderer.sidebar_width - 40)
+    sx = right_x + 20
+    card1_y = renderer.padding
+    slider_order_size = Slider(sx, card1_y + 50, slider_width, 2, 11, 4, "Basket Order Size (SKUs)")
+    slider_speed = Slider(sx, card1_y + 88, slider_width, 0.5, 4.0, 1.0, "Picker Speed Factor")
+    slider_surge_freq = Slider(sx, card1_y + 126, slider_width, 5, 60, 20, "Demand Surge Timer (s)")
+    slider_hot_intensity = Slider(sx, card1_y + 164, slider_width, 1, 40, 8, "Surge Intensity")
     sliders = [slider_order_size, slider_speed, slider_surge_freq, slider_hot_intensity]
     last_surge_time = time.time()
     ui_state.sliders = sliders
@@ -150,11 +166,25 @@ def run_ui():
         grid_offset_x = renderer.grid_offset_x
         grid_offset_y = renderer.grid_offset_y
         # Update slider geometry to stick inside right sidebar
-        slider_width = max(140, int(renderer.sidebar_width - 40))
-        sx = max(renderer.screen.get_width() - renderer.sidebar_width + renderer.padding + 10, renderer.screen.get_width() - slider_width - 20)
-        sy = renderer.padding + 40
+        grid_pixel_width = layout.cols * renderer.tile_size
+        right_x = renderer.grid_offset_x + grid_pixel_width + renderer.padding
+        slider_width = int(renderer.sidebar_width - 40)
+        sx = right_x + 20
+        
+        # Calculate dynamic scaling factor k matching renderer.py
+        header_height = 55
+        available_height = renderer.screen.get_height() - renderer.padding * 2 - int(header_height * renderer.ui_scale)
+        orders_to_show = order_manager.active_orders[:2] + order_manager.pending_orders[:2]
+        h_orders_base = 55 if not orders_to_show else (42 + len(orders_to_show[:3]) * 15)
+        sum_base = 240 + 115 + 105 + h_orders_base + 80 + 85 + 80
+        if available_height > sum_base + 96:
+            k = min(1.35, (available_height - 96) / sum_base)
+        else:
+            k = 1.0
+            
+        card1_y = renderer.padding + int(header_height * renderer.ui_scale)
         for i, s in enumerate(sliders):
-            s.set_rect(sx, sy + i * int(48 * renderer.scale), slider_width)
+            s.set_rect(sx, card1_y + int(50 * k) + i * int(38 * k), slider_width)
         ui_state.sliders = sliders
         
         # Determine Hovered Cell
@@ -250,7 +280,7 @@ def run_ui():
                         
                 elif event.key == pygame.K_s:
                     strategy_idx = (strategy_idx + 1) % len(strategies)
-                    metrics = slotting_engine.optimize_slotting(inventory, layout, strategies[strategy_idx], forecaster)
+                    metrics = slotting_engine.optimize_slotting(inventory, layout, strategies[strategy_idx], forecaster, force=True)
                     if metrics.get("executed"):
                         ui_state.reslot_timer = 120
                         ui_state.reslot_moved_skus = set(metrics.get("moved_skus", []))
@@ -304,8 +334,8 @@ def run_ui():
             picker = assign_nearest_available_picker(pickers, layout, packing_station)
             if picker:
                 order = order_manager.get_next_pending_order()
-                full_path_cells, _, _ = route_order(layout, packing_station, order.locations)
-                picker.assign_route(order, full_path_cells)
+                full_path_cells, _, _, picking_path_len = route_order(layout, packing_station, order.locations)
+                picker.assign_route(order, full_path_cells, picking_path_len)
                 # Assign precise target pixel logic is handled inside update now, but start pos must be correct
             else:
                 break

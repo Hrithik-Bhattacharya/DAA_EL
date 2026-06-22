@@ -14,8 +14,10 @@ class PickerState(Enum):
 class Picker:
     def __init__(self, picker_id: int, start_pos: tuple[int, int], color: tuple[int, int, int]):
         self.id = picker_id
-        self.pixel_x = float(start_pos[1])
-        self.pixel_y = float(start_pos[0])
+        self.pixel_x = 0.0
+        self.pixel_y = 0.0
+        self.gx = float(start_pos[1])
+        self.gy = float(start_pos[0])
         self.grid_pos = start_pos
         self.color = color
         self.state = PickerState.IDLE
@@ -31,11 +33,12 @@ class Picker:
         self.total_time = 0.0
         self.speed = PICKER_BASE_SPEED
 
-    def assign_route(self, order: Order, full_path_cells: list[tuple[int, int]]):
+    def assign_route(self, order: Order, full_path_cells: list[tuple[int, int]], picking_path_len: int = 0):
         self.active_order = order
         order.picker_id = self.id
         self.full_path_cells = full_path_cells
         self.path_index = 0
+        self.picking_path_len = picking_path_len
         
         if full_path_cells:
             self.state = PickerState.PICKING
@@ -45,40 +48,49 @@ class Picker:
         self.total_time += 1.0
         
         if self.state == PickerState.IDLE or not self.full_path_cells or self.path_index >= len(self.full_path_cells):
+            self.pixel_x = self.gx * tile_size + offset_x + tile_size // 2
+            self.pixel_y = self.gy * tile_size + offset_y + tile_size // 2
             return None
 
         self.active_time += 1.0
         
         target_cell = self.full_path_cells[self.path_index]
-        target_x = target_cell[1] * tile_size + offset_x + tile_size // 2
-        target_y = target_cell[0] * tile_size + offset_y + tile_size // 2
+        target_gx = float(target_cell[1])
+        target_gy = float(target_cell[0])
 
-        dx = target_x - self.pixel_x
-        dy = target_y - self.pixel_y
-        dist = math.hypot(dx, dy)
+        dgx = target_gx - self.gx
+        dgy = target_gy - self.gy
+        grid_dist = math.hypot(dgx, dgy)
 
-        if dist > self.speed:
-            self.pixel_x += (dx / dist) * self.speed
-            self.pixel_y += (dy / dist) * self.speed
+        speed_grid = self.speed / tile_size if tile_size > 0 else 0.1
+
+        if grid_dist > speed_grid:
+            self.gx += (dgx / grid_dist) * speed_grid
+            self.gy += (dgy / grid_dist) * speed_grid
             self.distance_traveled += self.speed
-            self.trail.append((self.pixel_x, self.pixel_y))
         else:
-            self.pixel_x = target_x
-            self.pixel_y = target_y
-            self.distance_traveled += dist
+            self.gx = target_gx
+            self.gy = target_gy
             self.grid_pos = target_cell
             self.path_index += 1
-            self.trail.append((self.pixel_x, self.pixel_y))
+            self.distance_traveled += grid_dist * tile_size
 
-            if self.path_index >= len(self.full_path_cells):
-                # Finished route
-                completed_order = self.active_order
-                self.state = PickerState.IDLE
-                self.orders_completed += 1
-                self.active_order = None
-                self.full_path_cells = []
-                self.trail.clear()
-                return completed_order
+        self.pixel_x = self.gx * tile_size + offset_x + tile_size // 2
+        self.pixel_y = self.gy * tile_size + offset_y + tile_size // 2
+        self.trail.append((self.gx, self.gy))
+
+        if self.picking_path_len > 0 and self.path_index >= self.picking_path_len:
+            self.state = PickerState.RETURNING
+
+        if self.path_index >= len(self.full_path_cells):
+            # Finished route
+            completed_order = self.active_order
+            self.state = PickerState.IDLE
+            self.orders_completed += 1
+            self.active_order = None
+            self.full_path_cells = []
+            self.trail.clear()
+            return completed_order
                 
         if len(self.trail) > 50:
             self.trail.pop(0)
